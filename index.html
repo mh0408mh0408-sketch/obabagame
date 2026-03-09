@@ -353,6 +353,9 @@
     let gameLoopRef = null;
     let gameSpeed = 1000;
     
+    // Game 1 Specific
+    let gm1LastHoles = [];
+    
     // Game 2 Specific
     let timeLeft = 100; // Percentage
     let currentLevel = 1;
@@ -543,6 +546,7 @@
     function initGame1(stage) {
         lives = 3;
         gameSpeed = 2000; // Slower initial speed
+        gm1LastHoles = [];
         updateLivesDisplay();
         
         stage.innerHTML = `
@@ -583,8 +587,12 @@
         const holes = [];
         while(holes.length < count) {
             const h = Math.floor(Math.random() * 9);
-            if(!holes.includes(h)) holes.push(h);
+            // ひとつ前のターンで出た穴とは被らないようにする
+            if(!holes.includes(h) && !gm1LastHoles.includes(h)) {
+                holes.push(h);
+            }
         }
+        gm1LastHoles = [...holes];
 
         holes.forEach(i => {
             const m = document.getElementById(`mole-${i}`);
@@ -818,7 +826,15 @@
             // Correct
             if(navigator.vibrate) navigator.vibrate(50);
             addScore(100);
-            timeLeft = Math.min(100, timeLeft + 15); // Add time bonus
+            
+            // Calculate time bonus: starts at 50, decreases by 5 every 10 levels, minimum 20.
+            // currentLevel starts at 1. Wait, per user request: "10問正解ごとに5％ずつ減らして". 
+            // This means at level 10 (9 correct), bonus is 50. At level 11 (10 correct), bonus is 45.
+            const levelsCleared = currentLevel - 1;
+            const reduction = Math.floor(levelsCleared / 10) * 5;
+            const bonus = Math.max(20, 50 - reduction);
+            
+            timeLeft = Math.min(100, timeLeft + bonus); // Add time bonus
             currentLevel++;
             updateTimerDisplay();
             startOddStage();
