@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ミニゲームボックス</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        body {
+            background: #fdf6e3; /* Soft warm background */
+            color: #4a4a4a;
+            font-family: 'Hiragino Maru Gothic ProN', 'Rounded M+ 1c', 'Meiryo', sans-serif;
+            touch-action: none;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            margin: 0;
+            position: relative;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.9);
+            border: 4px solid #fbd38d; /* Soft orange/yellow border */
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        .btn-large {
+            width: 100%;
+            padding: 1.5rem;
+            font-size: 1.5rem;
+            font-weight: 900;
+            border-radius: 1rem;
+            box-shadow: 0 6px 0px rgba(0,0,0,0.15);
+            transition: all 0.1s;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-large:active {
+            transform: translateY(6px);
+            box-shadow: 0 0px 0px rgba(0,0,0,0.15);
+        }
+
+        .emoji-icon {
+            font-size: 2.5rem;
+            line-height: 1;
+        }
+
+        /* Views */
+        .view {
+            display: none;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .view.active {
+            display: flex;
+        }
+
+        /* Shared Headers */
+        .game-header {
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+
+        .score-box {
+            background: white;
+            border: 3px solid #fbd38d;
+            border-radius: 1rem;
+            padding: 0.5rem 1rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .lives-container {
+            display: flex;
+            gap: 0.5rem;
+            font-size: 2rem;
+        }
+        
+        .time-bar-bg {
+            width: 100%;
+            height: 20px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .time-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ade80, #3b82f6);
+            width: 100%;
+            transition: width 0.1s linear;
+        }
+
+        /* Game 1: Whack-a-mole */
+        .grid-3x3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1/1;
+            margin: auto;
+        }
+        .hole {
+            background: #d4a373; /* Dirt color */
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 10px 15px rgba(0,0,0,0.4);
+            border: 4px solid #ccd5ae; /* grass edge */
+        }
+        .mole {
+            position: absolute;
+            bottom: -100%;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            transition: bottom 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .mole.up {
+            bottom: 0;
+        }
+        .mole.hit {
+            filter: brightness(0.5) sepia(1);
+            transform: scale(0.8);
+        }
+
+        /* Game 2: Odd One Out */
+        .odd-grid {
+            display: grid;
+            gap: 8px;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1/1;
+            margin: auto;
+            background: white;
+            padding: 1rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        .odd-cell {
+            background: #f1f5f9;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            cursor: pointer;
+            transition: transform 0.1s;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .odd-cell:active {
+            transform: scale(0.9);
+            background: #e2e8f0;
+        }
+
+        /* Game 3: Shanghai Sort */
+        .shanghai-arena {
+            position: relative;
+            width: 300px;
+            height: 300px; /* fixed height for stacking */
+            margin: 0 auto; /* Center horizontally */
+        }
+        .shanghai-tile {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: #fff;
+            border: 2px solid #cbd5e1;
+            border-bottom: 6px solid #94a3b8;
+            border-right: 4px solid #94a3b8;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            user-select: none;
+            touch-action: none; /* Crucial for custom pointer drag */
+            cursor: grab;
+            box-shadow: 2px 4px 8px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+        .shanghai-tile.covered {
+            filter: brightness(0.6);
+            cursor: not-allowed;
+            border-bottom: 6px solid #475569;
+            border-right: 4px solid #475569;
+        }
+        .shanghai-tile.dragging {
+            cursor: grabbing;
+            transition: none; /* Disable transition during drag for smoothness */
+            box-shadow: 5px 10px 20px rgba(0,0,0,0.3);
+            z-index: 9999 !important; /* Always on top while dragging */
+        }
+        .sort-bin {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            border-radius: 16px;
+            border: 4px dashed;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        .sort-bin:active {
+            transform: scale(0.95);
+        }
+
+        /* Game Over Modal */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Menu View -->
+    <div id="view-menu" class="view active p-6">
+        <div class="flex-1 flex flex-col justify-center items-center">
+            <h1 class="text-4xl font-black text-orange-500 mb-8 text-center drop-shadow-sm" style="line-height: 1.3;">
+                ミニゲーム<br>ボックス
+            </h1>
+            
+            <button onclick="startGame(1)" class="btn-large bg-orange-100 border-4 border-orange-400 text-orange-700">
+                <span class="emoji-icon">🐹</span> もぐらたたき
+            </button>
+            
+            <button onclick="startGame(2)" class="btn-large bg-green-100 border-4 border-green-400 text-green-700">
+                <span class="emoji-icon">💮</span> なかま探し
+            </button>
+            
+            <button onclick="startGame(3)" class="btn-large bg-blue-100 border-4 border-blue-400 text-blue-700 mb-8">
+                <span class="emoji-icon">📦</span> お片付けパズル
+            </button>
+            
+            <div class="w-full bg-white rounded-2xl p-4 border-4 border-gray-200">
+                <h2 class="text-xl font-bold text-gray-500 text-center mb-2">🏆 世界ランキング 🏆</h2>
+                <div class="flex justify-center gap-2 mb-4">
+                    <button onclick="loadLeaderboard(1)" class="px-3 py-1 bg-orange-100 text-orange-600 rounded-full font-bold text-sm">もぐら</button>
+                    <button onclick="loadLeaderboard(2)" class="px-3 py-1 bg-green-100 text-green-600 rounded-full font-bold text-sm">なかま</button>
+                    <button onclick="loadLeaderboard(3)" class="px-3 py-1 bg-blue-100 text-blue-600 rounded-full font-bold text-sm">ソート</button>
+                </div>
+                <div id="leaderboard-list" class="text-sm text-gray-600 space-y-1 max-h-40 overflow-y-auto w-full px-2">
+                    <p class="text-center text-gray-400">読み込み中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gameplay View (Shared container) -->
+    <div id="view-game" class="view">
+        <!-- Header -->
+        <div class="game-header">
+            <button onclick="showMenu()" class="w-16 h-16 bg-white border-4 border-gray-300 rounded-2xl text-2xl font-black text-gray-500 shadow-sm active:translate-y-1">戻る</button>
+            
+            <div class="flex flex-col items-center">
+                <div class="text-xs font-bold text-gray-500">ハイスコア: <span id="hi-score">0</span></div>
+                <div class="score-box">
+                    <span class="text-sm font-bold text-orange-500 block">スコア</span>
+                    <span id="current-score" class="text-3xl font-black text-orange-600 block leading-none">0</span>
+                </div>
+            </div>
+
+            <div id="status-container" class="flex flex-col items-end justify-center w-24">
+                <!-- Lives or Timer goes here -->
+            </div>
+        </div>
+
+        <!-- Game Area Container -->
+        <div id="game-stage" class="flex-1 relative w-full p-4 flex flex-col items-center justify-center">
+            <!-- Specific game HTML is injected here -->
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over-modal" class="modal-overlay">
+        <div class="glass-panel p-8 w-[90%] max-w-sm text-center flex flex-col items-center">
+            <h2 id="go-title" class="text-3xl font-black text-red-500 mb-2">ゲーム終了！</h2>
+            <p class="text-gray-600 font-bold mb-4">スコア: <span id="go-score" class="text-4xl text-orange-500 ml-2">0</span></p>
+            
+            <div class="w-full mb-6 text-left">
+                <p class="text-sm font-bold text-gray-500 mb-1">ランキングに登録:</p>
+                <div class="flex gap-2">
+                    <input type="text" id="player-name" placeholder="名前 (10文字以内)" maxlength="10" class="flex-1 p-2 border-2 border-gray-300 rounded-lg text-lg font-bold">
+                    <button onclick="submitScore()" id="submit-btn" class="bg-blue-500 text-white font-bold px-4 rounded-lg active:bg-blue-600">送信</button>
+                </div>
+                <p id="submit-msg" class="text-xs text-green-500 font-bold mt-1 h-4"></p>
+            </div>
+
+            <button onclick="restartCurrentGame()" class="btn-large bg-yellow-400 border-4 border-yellow-600 text-yellow-900 mb-4">
+                もう一度遊ぶ
+            </button>
+            <button onclick="showMenu()" class="btn-large bg-white border-4 border-gray-300 text-gray-600">
+                メニューへ戻る
+            </button>
+        </div>
+    </div>
+
+<script>
+    // --- Firebase Setup ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAvs-vi2D6jDweP4rav-_7jFlRFvJ8vvIY",
+      authDomain: "kantangame.firebaseapp.com",
+      projectId: "kantangame",
+      storageBucket: "kantangame.firebasestorage.app",
+      messagingSenderId: "1034040571716",
+      appId: "1:1034040571716:web:5321d33c3b39e49aa4c911",
+      measurementId: "G-JNXMZQ63LE"
+    };
+
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // --- Global Application State ---
+    let currentActiveGame = 0; // 1, 2, or 3
+    let score = 0;
+    let lives = 3;
+    let gameLoopRef = null;
+    let gameSpeed = 1000;
+    
+    // Game 2 Specific
+    let timeLeft = 100; // Percentage
+    let currentLevel = 1;
+    let timerRef = null;
+
+    // Game 3 Specific
+    let shTiles = []; // The current active tiles
+    let shCategories = []; // The bins
+    let shSelectedTileId = null; 
+    let shLevel = 1;
+    let shTotalTimeLimit = 100; // in seconds
+    let shTimeLeftSec = 100;
+
+    // --- Shared Functions ---
+    function updateLivesDisplay() {
+        const cont = document.getElementById('status-container');
+        cont.innerHTML = '<div class="lives-container text-red-500"></div>';
+        const livesCont = cont.querySelector('.lives-container');
+        livesCont.innerHTML = '❤️'.repeat(Math.max(0, lives));
+    }
+
+    function initTimerDisplay() {
+        const cont = document.getElementById('status-container');
+        cont.innerHTML = '<div class="text-xs font-bold text-gray-500 w-full text-center mb-1">じかん</div><div class="time-bar-bg"><div id="time-bar" class="time-bar-fill"></div></div>';
+    }
+
+    function updateTimerDisplay() {
+        const bar = document.getElementById('time-bar');
+        if(bar) bar.style.width = `${Math.max(0, timeLeft)}%`;
+        if (timeLeft < 20 && bar) bar.style.background = '#ef4444'; // turn red
+    }
+    function updateShTimerDisplay() {
+        const bar = document.getElementById('time-bar');
+        const pct = (shTimeLeftSec / shTotalTimeLimit) * 100;
+        if(bar) bar.style.width = `${Math.max(0, pct)}%`;
+        if (pct < 20 && bar) bar.style.background = '#ef4444'; // turn red
+        else if (bar) bar.style.background = ''; // reset color if gained time
+    }
+    function getHighScore(gameId) {
+        return localStorage.getItem(`grandma_hiscore_${gameId}`) || 0;
+    }
+    function saveHighScore(gameId, s) {
+        const hs = getHighScore(gameId);
+        if (s > hs) {
+            localStorage.setItem(`grandma_hiscore_${gameId}`, s);
+        }
+    }
+
+    function showMenu() {
+        endCurrentGame();
+        document.getElementById('view-game').classList.remove('active');
+        document.getElementById('view-menu').classList.add('active');
+        document.getElementById('game-over-modal').style.display = 'none';
+        loadLeaderboard(1);
+    }
+
+    function loadLeaderboard(gameId) {
+        const list = document.getElementById('leaderboard-list');
+        list.innerHTML = '<p class="text-center text-gray-400">読み込み中...</p>';
+        const gameNames = {1: 'もぐらたたき', 2: 'なかま探し', 3: 'カラーソート'};
+        
+        db.ref('leaderboard/game' + gameId).orderByChild('score').limitToLast(10).once('value')
+        .then(snapshot => {
+            const scores = [];
+            snapshot.forEach(child => { scores.push(child.val()); });
+            scores.reverse(); // high to low
+
+            if (scores.length === 0) {
+                list.innerHTML = `<p class="text-center text-gray-400">まだ記録がありません</p>`;
+                return;
+            }
+
+            let html = `<div class="font-bold text-gray-400 text-center mb-1 border-b pb-1">${gameNames[gameId]}</div>`;
+            scores.forEach((s, i) => {
+                let medal ='';
+                if(i===0) medal='🥇';
+                else if(i===1) medal='🥈';
+                else if(i===2) medal='🥉';
+                else medal=`<span class="inline-block w-4 text-center">${i+1}</span>`;
+                html += `<div class="flex justify-between items-center px-1">
+                            <span>${medal} <span class="font-bold ml-1 text-gray-700">${s.name}</span></span>
+                            <span class="font-black text-orange-500">${s.score}</span>
+                         </div>`;
+            });
+            list.innerHTML = html;
+        }).catch(err => {
+            list.innerHTML = '<p class="text-center text-red-500">取得失敗</p>';
+        });
+    }
+
+    function startGame(gameId) {
+        currentActiveGame = gameId;
+        score = 0;
+        
+        document.getElementById('view-menu').classList.remove('active');
+        document.getElementById('view-game').classList.add('active');
+        document.getElementById('game-over-modal').style.display = 'none';
+        
+        document.getElementById('current-score').innerText = '0';
+        document.getElementById('hi-score').innerText = getHighScore(gameId);
+        
+        const stage = document.getElementById('game-stage');
+        stage.innerHTML = ''; // Clear stage
+        
+        if (gameId === 1) initGame1(stage);
+        else if (gameId === 2) initGame2(stage);
+        else if (gameId === 3) initGame3(stage);
+    }
+
+    function restartCurrentGame() {
+        startGame(currentActiveGame);
+    }
+
+    function triggerGameOver() {
+        saveHighScore(currentActiveGame, score);
+        document.getElementById('go-score').innerText = score;
+        document.getElementById('submit-msg').innerText = '';
+        document.getElementById('submit-btn').disabled = false;
+        document.getElementById('submit-btn').classList.remove('opacity-50');
+        
+        // Restore previous name if available
+        const savedName = localStorage.getItem('grandma_player_name');
+        if (savedName) document.getElementById('player-name').value = savedName;
+
+        document.getElementById('game-over-modal').style.display = 'flex';
+        endCurrentGame();
+    }
+
+    function submitScore() {
+        if (score <= 0) return;
+        const nameInput = document.getElementById('player-name');
+        let name = nameInput.value.trim();
+        if (!name) name = "名無し";
+        
+        localStorage.setItem('grandma_player_name', name); // Remember for next time
+        
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+        document.getElementById('submit-msg').innerText = "送信しています...";
+
+        const ref = db.ref('leaderboard/game' + currentActiveGame).push();
+        ref.set({
+            name: name,
+            score: score,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        }).then(() => {
+            document.getElementById('submit-msg').innerText = "ランキングに登録しました！";
+        }).catch(err => {
+            document.getElementById('submit-msg').innerText = "送信に失敗しました。";
+            btn.disabled = false;
+            btn.classList.remove('opacity-50');
+        });
+    }
+
+    function addScore(pts) {
+        score += pts;
+        document.getElementById('current-score').innerText = score;
+    }
+
+    function loseLife() {
+        lives--;
+        updateLivesDisplay();
+        if(navigator.vibrate) navigator.vibrate(200);
+        if (lives <= 0) {
+            triggerGameOver();
+        }
+    }
+
+    // Called when leaving a game to clean up timers/intervals
+    function endCurrentGame() {
+        if(window.gameEndCallback) {
+            window.gameEndCallback();
+            window.gameEndCallback = null;
+        }
+        if(gameLoopRef) {
+            clearInterval(gameLoopRef);
+            clearTimeout(gameLoopRef);
+            gameLoopRef = null;
+        }
+        if(timerRef) {
+            clearInterval(timerRef);
+            timerRef = null;
+        }
+    }
+
+    // --- Game 1: Whack-a-Mole (もぐらたたき) ---
+    function initGame1(stage) {
+        lives = 3;
+        gameSpeed = 2000; // Slower initial speed
+        updateLivesDisplay();
+        
+        stage.innerHTML = `
+            <div class="w-full text-center mb-4">
+                <p class="text-xl font-bold text-gray-600">動物をたたいて！<br><span class="text-red-500 text-sm">👻おばけは叩かないでね！</span></p>
+            </div>
+            <div id="whack-grid" class="grid-3x3">
+                ${Array(9).fill(0).map((_, i) => `
+                    <div class="hole">
+                        <div class="mole" id="mole-${i}" onmousedown="whackMole(${i})" ontouchstart="whackMole(${i}); event.preventDefault();"></div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        gameLoopRef = setTimeout(popMole, gameSpeed);
+        
+        window.gameEndCallback = () => {
+            // cleanup is handled in endCurrentGame
+        };
+    }
+
+    function popMole() {
+        if (lives <= 0) return;
+        
+        // Hide existing
+        for(let i=0; i<9; i++) {
+            const m = document.getElementById(`mole-${i}`);
+            if(m) {
+                m.classList.remove('up', 'hit');
+                m.dataset.type = '';
+                m.dataset.active = 'false';
+            }
+        }
+
+        // Pick 1 or 2 holes
+        const count = Math.random() > 0.8 ? 2 : 1;
+        const holes = [];
+        while(holes.length < count) {
+            const h = Math.floor(Math.random() * 9);
+            if(!holes.includes(h)) holes.push(h);
+        }
+
+        holes.forEach(i => {
+            const m = document.getElementById(`mole-${i}`);
+            const isGhost = Math.random() < 0.2; // 20% chance ghost
+            
+            const animals = ['🐹', '🐸', '🐻', '🐵', '🐰'];
+            m.innerText = isGhost ? '👻' : animals[Math.floor(Math.random()*animals.length)];
+            m.dataset.type = isGhost ? 'ghost' : 'animal';
+            m.dataset.active = 'true';
+            m.classList.add('up');
+        });
+
+        // Speed up gradually but less aggressively
+        gameSpeed = Math.max(800, gameSpeed * 0.98);
+        gameLoopRef = setTimeout(popMole, gameSpeed);
+    }
+
+    window.whackMole = function(idx) {
+        if (lives <= 0) return;
+        const m = document.getElementById(`mole-${idx}`);
+        if(m.dataset.active !== 'true') return;
+
+        m.dataset.active = 'false'; // prevent double tap
+        m.classList.add('hit');
+        
+        if (m.dataset.type === 'ghost') {
+            loseLife();
+            // Show penalty visual
+            m.innerText = '💥';
+        } else {
+            addScore(10);
+            if(navigator.vibrate) navigator.vibrate(50);
+            m.innerText = '🌟';
+        }
+        
+        setTimeout(() => {
+            if(m) m.classList.remove('up', 'hit');
+        }, 200);
+    };
+
+    function initGame2(stage) {
+        currentLevel = 1;
+        timeLeft = 100;
+        initTimerDisplay();
+        
+        
+        stage.innerHTML = `
+            <div class="w-full text-center mb-2">
+                <p class="text-xl font-bold text-gray-600">なかまはずれはどれ？</p>
+            </div>
+            <div id="odd-grid-container" class="w-full flex justify-center"></div>
+        `;
+
+        startOddStage();
+
+        // Timer decrements every 100ms
+        timerRef = setInterval(() => {
+            if (timeLeft <= 0) {
+                triggerGameOver();
+                return;
+            }
+            timeLeft -= 0.6; // Slightly slower decay (was 0.8) to allow more time
+            updateTimerDisplay();
+        }, 100);
+
+        window.gameEndCallback = () => {
+             // cleanup in endCurrentGame
+        };
+    }
+
+    function startOddStage() {
+        const cont = document.getElementById('odd-grid-container');
+        // Grid size progression: 2x2 -> 3x3 -> 4x4 -> 5x5
+        let size = 2;
+        if (currentLevel > 2) size = 3;
+        if (currentLevel > 5) size = 4;
+        if (currentLevel > 10) size = 5;
+
+        const pairs = [
+            // --- 似ている漢字コレクション ---
+            ['大', '犬'], ['白', '曰'], ['日', '曰'], ['人', '入'], ['土', '士'], 
+            ['牛', '午'], ['右', '石'], ['鳥', '烏'], ['網', '綱'], ['木', '本'],
+            ['幸', '辛'], ['干', '千'], ['万', '方'], ['水', '氷'], ['未', '末'],
+            ['徴', '微'], ['緑', '縁'], ['輪', '輸'], ['侍', '待'], ['特', '持'],
+            ['測', '側'], ['柱', '駐'], ['感', '惑'], ['情', '清'], ['抜', '伐'],
+            ['治', '浴'], ['免', '兔'], ['壁', '璧'], ['侯', '候'], ['裁', '栽'],
+            ['哀', '衰'], ['萩', '荻'], ['渇', '掲'], ['晴', '睛'], ['濯', '曜'],
+            ['鳴', '嗚'], ['籍', '籍'], ['柿', '柿'], // Some variants look identical based on font, use safe ones
+            ['買', '買'], ['借', '惜'], ['推', '椎'], ['孤', '狐'], ['爪', '瓜'],
+            ['拾', '捨'], ['怒', '恕'], ['璧', '壁'], ['眠', '眼'], ['盲', '育'],
+            ['考', '老'], ['見', '貝'], ['荒', '慌'], ['哀', '衰'],
+
+            // More Kanji Patterns (Stroke differences)
+            ['王', '玉'], ['太', '大'], ['庄', '圧'], ['兄', '只'], ['若', '苦'],
+            ['毛', '手'], ['牛', '生'], ['旬', '句'], ['古', '右'], ['千', '干'],
+            ['丈', '文'], ['欠', '久'], ['目', '日'], ['田', '由'], ['申', '甲'],
+            ['己', '已'], ['巳', '己'], ['ツ', 'シ'], ['ソ', 'ン'], ['力', 'カ'],
+            ['夕', 'タ'], ['エ', '工'], ['ロ', '口'],
+
+            // --- 似ている・紛らわしい絵文字（顔・人物） ---
+            ['😀', '😃'], ['😅', '🥲'], ['😎', '🥸'], ['😂', '🤣'], ['😉', '😊'],
+            ['😇', '🥰'], ['😍', '🤩'], ['😘', '😗'], ['😚', '😙'], ['😋', '😛'],
+            ['😝', '😜'], ['🤪', '🤓'], ['🧐', '😕'], ['😟', '🙁'], ['😮', '😯'],
+            ['😲', '😳'], ['🥺', '🥹'], ['😦', '😧'], ['😨', '😰'], ['😥', '😓'],
+            ['🫠', '😶‍🌫️'], ['🤔', '🫣'], ['🤭', '🫢'], ['🤫', '🤥'], ['😬', '😮‍💨'],
+            ['😪', '🤤'], ['😴', '🥱'], ['😵', '😵‍💫'], ['🤐', '🥴'], ['🤢', '🤮'],
+            ['🤧', '😷'], ['🤒', '🤕'], ['🤑', '🤠'], ['😈', '👿'], ['👹', '👺'],
+            ['🤡', '💩'], ['👻', '💀'], ['☠️', '👽'], ['👾', '🤖'], ['🎃', '😺'],
+            ['😸', '😹'], ['😻', '😼'], ['😽', '🙀'], ['😿', '😾'],
+
+            // --- 紛らわしい絵文字（手・ジェスチャー） ---
+            ['👍', '👎'], ['🤛', '🤜'], ['🤞', '✌️'], ['🫰', '🤏'], ['👈', '👉'],
+            ['👆', '👇'], ['☝️', '✋'], ['🤚', '🖐'], ['🖖', '👋'], ['🤙', '💪'],
+            ['🦾', '🖕'], ['✍️', '祈'], ['🤲', '👐'], ['🙌', '👏'], ['🤝', '🙏'],
+
+            // --- 似ている絵文字（動物・自然） ---
+            ['🐵', '🐒'], ['🦍', '🦧'], ['🐶', '🐕'], ['🐩', '🐺'], ['🦊', '🦝'],
+            ['🐱', '🐈'], ['🦁', '🐯'], ['🐅', '🐆'], ['🐴', '🐎'], ['🦄', '🦓'],
+            ['🦌', '🦬'], ['🐮', '🐂'], ['🐃', '🐄'], ['🐷', '🐖'], ['🐗', '🐽'],
+            ['🐏', '🐑'], ['🐐', '🐪'], ['🐫', '🦙'], ['🦒', '🐘'], ['🦣', '🦏'],
+            ['🦛', '🐭'], ['🐁', '🐀'], ['🐹', '🐰'], ['🐇', '🐿️'], ['🦫', '🦔'],
+            ['🦇', '🐻'], ['🐻‍❄️', '🐨'], ['🐼', '🦥'], ['🦦', '🦨'], ['🦘', '🦡'],
+            ['🐾', '🦃'], ['🐔', '🐓'], ['🐣', '🐤'], ['🐥', '🐦'], ['🐧', '🕊️'],
+            ['🦅', '🦆'], ['🦢', '🦉'], ['🦤', '🪶'], ['🦩', '🦚'], ['🦜', '🐸'],
+            ['🐊', '🐢'], ['🦎', '🐍'], ['🐲', '🐉'], ['🦕', '🦖'], ['🐳', '🐋'],
+            ['🐬', '🦭'], ['🐟', '🐠'], ['🐡', '🦈'], ['🐙', '🐚'], ['🪸', '🐌'],
+            ['蝶', '🦋'], ['🐛', '🐜'], ['蜂', '🐝'], ['🪲', '🐞'], ['🦗', '🪳'],
+            ['🕷️', '🕸️'], ['🦂', '蚊'], ['🦟', '🪰'], ['🪱', '🦠'],
+
+            // 自然・植物
+            ['💮', '🌸'], ['🌼', '🌻'], ['🥀', '🌹'], ['🌷', '🪷'], ['🌺', '🌸'],
+            ['🌱', '🌿'], ['☘️', '🍀'], ['🪴', '🎋'], ['🍃', '🍂'], ['🍁', '🍄'],
+            ['🌵', '🌴'], ['🌲', '🌳'], ['🪵', '🌍'], ['🌎', '🌏'], ['🌑', '🌒'],
+            ['🌓', '🌔'], ['🌕', '🌖'], ['🌗', '🌘'], ['🌙', '🌚'], ['🌛', '🌜'],
+            ['☀️', '🌝'], ['🌞', '⭐'], ['🌟', '🌠'], ['☁️', '⛅'], ['⛈️', '🌤️'],
+            ['🌥️', '🌦️'], ['🌧️', '🌨️'], ['🌩️', '🌪️'], ['🌫️', '🌬️'],
+
+            // --- 紛らわしい絵文字（食べ物） ---
+            ['🍏', '🍎'], ['🍐', '🍊'], ['🍋', '🍌'], ['🍉', '🍇'], ['🍓', '🫐'],
+            ['🍈', '🍒'], ['🍑', '🥭'], ['🍍', '🥥'], ['🥝', '🍅'], ['🍆', '🥑'],
+            ['🥦', '🥬'], ['🥒', '🌶️'], ['🫑', '🌽'], ['🥕', '🫒'], ['🧄', '🧅'],
+            ['🥔', '🍠'], ['🥐', '🥯'], ['🍞', '🥖'], ['🥨', '🧀'], ['🥚', '🍳'],
+            ['🧈', '🥞'], ['🧇', '🥓'], ['🥩', '🍗'], ['🍖', '🌭'], ['🍔', '🍟'],
+            ['🍕', '🫓'], ['🥪', '🥙'], ['🧆', '🌮'], ['🌯', '🫔'], ['🥗', '🥘'],
+            ['🫕', '🥫'], ['🍝', '🍜'], ['🍲', '🍛'], ['🍣', '🍱'], ['🥟', '🦪'],
+            ['🍙', '🍚'], ['🍘', '🍥'], ['🥠', '🥮'], ['🍢', '🍡'], ['🍧', '🍨'],
+            ['🍦', '🥧'], ['🧁', '🍰'], ['🎂', '🍮'], ['🍭', '🍬'], ['🍫', '🍿'],
+            ['🍩', '🍪'], ['🌰', '🥜'], ['🍯', '🥛'], ['🍼', '☕'], ['🫖', '🍵'],
+            ['🍶', '🍾'], ['🍷', '🍸'], ['🍹', '🍺'], ['🍻', '🥂'], ['🥃', '🫗'],
+
+            // --- 紛らわしい絵文字（スポーツ・道具） ---
+            ['⚽', '🏀'], ['🏈', '⚾'], ['🥎', '🎾'], ['🏐', '🏉'], ['🥏', '🎱'],
+            ['🪀', '🏓'], ['🏸', '🏒'], ['🏑', '🥍'], ['🏏', '🪃'], ['🥅', '⛳'],
+            ['🪁', '🏹'], ['🎣', '🤿'], ['🥊', '🥋'], ['🎽', '🛹'], ['🛼', '🛷'],
+            ['⛸️', '🥌'], ['🎿', '⛷️'], ['🏂', '🪂'], ['🏋️', '🤼'], ['🤸', '⛹️'],
+            ['🤺', '🤽'], ['🚣', '🏇'], ['🚴', '🚵'], ['🏆', '🥇'], ['🥈', '🥉'],
+            ['🏅', '🎖️'], ['🏵️', '🎗️'], ['🎫', '🎟️'], ['🎪', '🤹'], ['🎭', '🩰'],
+            ['🎨', '🎬'], ['🎤', '🎧'], ['🎼', '🎹'], ['🥁', '🪘'], ['🎷', '🎺'],
+            ['🪗', '🎸'], ['🪕', '🎻'], ['🎲', '♟️'], ['🎯', '🎳'], ['🎮', '🎰'],
+
+            // --- 紛らわしい絵文字（乗り物・場所） ---
+            ['🚗', '🚘'], ['🚙', '🚐'], ['🚚', '🚛'], ['🚜', '🏎️'], ['🏍️', '🛵'],
+            ['🦽', '🦼'], ['🛺', '🚲'], ['🛴', '🛹'], ['🛼', '🚏'], ['🛣️', '🛤️'],
+            ['🛢️', '⛽'], ['🚨', '🚥'], ['🚦', '🛑'], ['🚧', '⚓'], ['⛵', '🛶'],
+            ['🚤', '🛳️'], ['⛴️', '🛥️'], ['🚢', '✈️'], ['🛩️', '🛫'], ['🛬', '🪂'],
+            ['💺', '🚁'], ['🚟', '🚠'], ['🚡', '🛰️'], ['🚀', '🛸'],
+
+            // --- 紛らわしい記号と図形 ---
+            ['⌚', '📱'], ['📲', '💻'], ['⌨️', '🖥️'], ['🖨️', '🖱️'], ['🖲️', '🕹️'],
+            ['🗜️', '💽'], ['💾', '💿'], ['📀', '📼'], ['📷', '📸'], ['📹', '🎥'],
+            ['📽️', '🎞️'], ['📞', '☎️'], ['📟', '📠'], ['📺', '📻'], ['🎙️', '🎚️'],
+            ['🎛️', '🧭'], ['⏱️', '⏲️'], ['⏰', '🕰️'], ['⏳', '⌛'], ['📡', '🔋'],
+            ['🔌', '💡'], ['🔦', '🕯️'], ['🪔', '🧯'], ['🗑️', '🛢️'], ['💸', '💵'],
+            ['💴', '💶'], ['💷', '🪙'], ['💰', '💳'], ['💎', '⚖️'], ['🪜', '🧰'],
+            ['🪛', '🔧'], ['🔨', '⚒️'], ['🛠️', '⛏️'], ['🪚', '🔩'], ['⚙️', '🪤'],
+            ['🧱', '⛓️'], ['🧲', '🔫'], ['💣', '🧨'], ['🪓', '🔪'], ['🗡️', '⚔️'],
+            ['🛡️', '🚬'], ['⚰️', '🪦'], ['⚱️', '🏺'], ['🔮', '📿'], ['🧿', '💈'],
+            ['⚗️', '🔭'], ['🔬', '🕳️'], ['🩹', '🩺'], ['💊', '💉'], ['🩸', '🧬'],
+            // 色と形
+            ['❤️', '🩷'], ['🧡', '💛'], ['💚', '💙'], ['🩵', '💜'], ['🖤', '🩶'],
+            ['🤍', '🤎'], ['💔', '❤️‍🔥'], ['❤️‍🩹', '❣️'], ['💕', '💞'], ['💓', '💗'],
+            ['💖', '💘'], ['💝', '💟'], ['☮️', '✝️'], ['☪️', '🕉️'], ['☸️', '✡️'],
+            ['🔯', '🕎'], ['☯️', '☦️'], ['🛐', '⛎'], ['♈', '♉'], ['♊', '♋'],
+            ['♌', '♍'], ['♎', '♏'], ['♐', '♑'], ['♒', '♓'], ['🆔', '⚛️'],
+            ['🉑', '☢️'], ['☣️', '📴'], ['📳', '🈶'], ['🈚', '申'], ['🈺', '月'],
+            // シンプルな図形
+            ['🔴', '🟠'], ['🟡', '🟢'], ['🔵', '🟣'], ['⚫', '⚪'], ['🟤', '🔺'],
+            ['🔻', '🔸'], ['🔹', '🔶'], ['🔷', ' квадра'], ['⬜', '⬛'], ['🟥', '🟧'],
+            ['🟨', '🟩'], ['🟦', '🟪'], ['🟫', '🔇'], ['🔈', '🔉'], ['🔊', '📢'],
+            ['📣', '📯'], ['🔔', '🔕'], ['🎵', '🎶'],
+            
+            // Further tricky specific custom pairs
+            ['間', '問'], ['材', '財'], ['池', '地'], ['板', '版'], ['録', '緑'],
+            ['鳴', '鶏'], ['幕', '慕'], ['借', '貸'], ['逃', '挑'], ['魅', '魔'],
+            ['壁', '癖'], ['網', '鋼'], ['験', '険'], ['輪', '論'], ['微', '徴'],
+            ['彼', '波'], ['洗', '先'], ['鏡', '境'], ['買', '員'], ['貴', '責'],
+            ['積', '績'], ['態', '熊'], ['句', '包'], ['王', '主'], ['午', '牛'],
+            ['夫', '天'], ['鳥', '島'], ['烏', '鳥'], ['戌', '戊'], ['戍', '戌'],
+            ['戊', '茂'], ['免', '兔'], ['兎', '兔'], ['侍', '待'], ['木', '休'],
+            ['入', '八'], ['己', '已'], ['已', '巳'], ['ソ', 'ン'], ['シ', 'ツ'],
+            ['ワ', 'ク'], ['ウ', 'ワ'], ['ヌ', 'ス'], ['メ', 'ノ'], ['ホ', '木'],
+            ['ロ', '口'], ['タ', '夕']
+        ];
+        
+        const pair = pairs[Math.floor(Math.random() * pairs.length)];
+        // Swapping sometimes to randomize which is the base and which is the odd one
+        const baseEmoji = Math.random() > 0.5 ? pair[0] : pair[1];
+        const oddEmoji = baseEmoji === pair[0] ? pair[1] : pair[0];
+
+        const totalCells = size * size;
+        const oddIndex = Math.floor(Math.random() * totalCells);
+
+        let html = `<div class="odd-grid" style="grid-template-columns: repeat(${size}, 1fr)">`;
+        
+        for (let i = 0; i < totalCells; i++) {
+            const isOdd = (i === oddIndex);
+            const emoji = isOdd ? oddEmoji : baseEmoji;
+            // Adjust font size based on grid size
+            const fontSz = size === 5 ? '1.5rem' : size === 4 ? '2rem' : '3rem';
+            html += `<div class="odd-cell" style="font-size: ${fontSz}" onmousedown="checkOdd(${isOdd})" ontouchstart="checkOdd(${isOdd}); event.preventDefault();">${emoji}</div>`;
+        }
+        html += `</div>`;
+        
+        cont.innerHTML = html;
+    }
+
+    window.checkOdd = function(isOdd) {
+        if (timeLeft <= 0) return;
+        
+        if (isOdd) {
+            // Correct
+            if(navigator.vibrate) navigator.vibrate(50);
+            addScore(100);
+            timeLeft = Math.min(100, timeLeft + 15); // Add time bonus
+            currentLevel++;
+            updateTimerDisplay();
+            startOddStage();
+        } else {
+            // Wrong
+            if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            timeLeft -= 15; // Penalty
+            updateTimerDisplay();
+            
+            // Visual feedback for wrong click
+            const grid = document.querySelector('.odd-grid');
+            grid.style.transform = 'translateX(-10px)';
+            setTimeout(() => grid.style.transform = 'translateX(10px)', 50);
+            setTimeout(() => grid.style.transform = 'translateX(-10px)', 100);
+            setTimeout(() => grid.style.transform = 'translateX(0)', 150);
+        }
+    };
+
+    // --- Game 3: Shanghai Sort Puzzle ---
+    function initGame3(stage) {
+        lives = 3; 
+        shLevel = 1;
+        timeLeft = 100;
+        
+        updateLivesDisplay();
+        initTimerDisplay();
+        
+        // Setup Bins/Categories
+        shCategories = [
+            { id: 0, title: 'くだもの', icon: '🍎', items: ['🍎','🍊','🍌','🍇','🍓','🍉'], color: 'border-red-400 bg-red-50 text-red-600' },
+            { id: 1, title: 'のりもの', icon: '🚗', items: ['🚗','🚕','🚌','🚓','🚑','🚒'], color: 'border-blue-400 bg-blue-50 text-blue-600' },
+            { id: 2, title: 'どうぶつ', icon: '🐶', items: ['🐶','🐱','🐭','🐹','🐰','🦊'], color: 'border-yellow-400 bg-yellow-50 text-yellow-600' },
+            { id: 3, title: 'ぶんぐ', icon: '✏️', items: ['✒️','✏️','📏','📐','✂️','🖍️'], color: 'border-green-400 bg-green-50 text-green-600' }
+        ];
+        
+        // Level text instead of timer
+        const cont = document.getElementById('status-container');
+        cont.innerHTML = `
+            <div class="flex items-center gap-1 w-full justify-center">
+                <span class="text-lg">❤️</span><span id="lives-disp" class="text-xl font-black text-red-500">3</span>
+            </div>
+            <div class="flex items-center gap-1 w-full justify-center mb-1">
+                <span class="text-xs font-bold text-gray-500">レベル</span><span id="sort-level-disp" class="text-lg font-black text-blue-500">1</span>
+            </div>
+            <div class="text-[10px] font-bold text-gray-500 w-full text-center">じかん</div>
+            <div class="time-bar-bg"><div id="time-bar" class="time-bar-fill"></div></div>
+        `;
+        
+        stage.innerHTML = `
+            <div class="w-full text-center mb-2">
+                <p class="text-lg font-bold text-gray-600">上にあるものからお片付け！</p>
+            </div>
+            <div id="shanghai-arena" class="shanghai-arena mb-4"></div>
+            
+            <div class="w-full grid grid-cols-2 gap-2 px-2" id="shanghai-bins">
+                ${shCategories.map(c => `
+                    <div class="sort-bin ${c.color}" data-binid="${c.id}">
+                        <span class="text-3xl">${c.icon}</span>
+                        <span class="text-sm font-bold mt-1">${c.title}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+
+        generateShanghaiLevel(shLevel);
+        
+        // Timer fires every 100ms (0.1s)
+        timerRef = setInterval(() => {
+            if (shTimeLeftSec <= 0) {
+                triggerGameOver();
+                return;
+            }
+            shTimeLeftSec -= 0.1; 
+            updateShTimerDisplay();
+        }, 100);
+        
+        window.gameEndCallback = () => {
+             // cleanup timerRef in endCurrentGame
+        };
+    }
+
+    function generateShanghaiLevel(lvl) {
+        document.getElementById('sort-level-disp').innerText = lvl;
+        shSelectedTileId = null;
+        
+        // Calculate number of tiles based on level
+        // Min 12, Max ~40
+        let numTiles = Math.min(40, 10 + (lvl * 4)); 
+        // Ensure it's a multiple of the number of categories (4)
+        numTiles = Math.floor(numTiles / 4) * 4;
+
+        // Calculate Time Limit: (5 seconds - 0.2s * (level - 1)) per tile. Minimum 2 seconds per tile.
+        let timePerTile = Math.max(2.0, 5.0 - ((lvl - 1) * 0.2));
+        shTotalTimeLimit = timePerTile * numTiles;
+        shTimeLeftSec = shTotalTimeLimit;
+        updateShTimerDisplay();
+
+        shTiles = [];
+        
+        // Generate items evenly distributed among categories
+        let pool = [];
+        for(let i=0; i<numTiles; i++){
+            const catId = i % shCategories.length;
+            const cat = shCategories[catId];
+            const itemEmoji = cat.items[Math.floor(Math.random() * cat.items.length)];
+            pool.push({ categoryId: catId, emoji: itemEmoji });
+        }
+        // Shuffle pool
+        pool.sort(() => Math.random() - 0.5);
+
+        // Generate 3D overlapping positions
+        // Area is ~ 300x300, tile is 60x60
+        // X: 0 to 240, Y: 0 to 240
+        for (let i = 0; i < numTiles; i++) {
+            const item = pool[i];
+            
+            // To make it look like Mahjong Solitaire, we build a pyramid-like structure
+            // Or just random clusters with high overlap probability
+            
+            // Center emphasis
+            const centerX = 120;
+            const centerY = 120;
+            
+            // Higher z-index means higher up. 
+            // We give random positions, but clustered towards center
+            const randomRadius = Math.random() * 100;
+            const randomAngle = Math.random() * Math.PI * 2;
+            
+            let x = centerX + Math.cos(randomAngle) * randomRadius;
+            let y = centerY + Math.sin(randomAngle) * randomRadius;
+            
+            // Snap to grid-like feeling (e.g. multiples of 30)
+            x = Math.floor(x / 30) * 30;
+            y = Math.floor(y / 30) * 30;
+
+            // clamp
+            x = Math.max(0, Math.min(240, x));
+            y = Math.max(0, Math.min(240, y));
+
+            shTiles.push({
+                id: i,
+                categoryId: item.categoryId,
+                emoji: item.emoji,
+                x: x,
+                y: y,
+                z: i, // Later generated tiles are placed on top
+                isRemoved: false
+            });
+        }
+
+        renderShanghai();
+    }
+
+    // Check if Tile A interacts with/covers Tile B
+    function isCovering(a, b) {
+        // Tile dimension is 60x60
+        const size = 50; // Use slightly smaller hitbox than visual (50 instead of 60) for forgiving gameplay
+        
+        const aRight = a.x + size;
+        const aBottom = a.y + size;
+        const bRight = b.x + size;
+        const bBottom = b.y + size;
+
+        // Standard AABB collision
+        return (a.x < bRight && aRight > b.x && a.y < bBottom && aBottom > b.y);
+    }
+
+    function calculateCoveredState() {
+        // Tile is covered if ANY tile with a higher Z-index and NOT removed overlaps it
+        for (let i = 0; i < shTiles.length; i++) {
+            const bottomTile = shTiles[i];
+            if (bottomTile.isRemoved) continue;
+            
+            bottomTile.isCovered = false;
+            for (let j = 0; j < shTiles.length; j++) {
+                const topTile = shTiles[j];
+                if (topTile.isRemoved) continue;
+                
+                // If top tile is strictly above bottom tile
+                if (topTile.z > bottomTile.z) {
+                    if (isCovering(topTile, bottomTile)) {
+                        bottomTile.isCovered = true;
+                        break; // No need to check other tiles
+                    }
+                }
+            }
+        }
+    }
+
+    // Drag State
+    let dragData = null;
+
+    function renderShanghai() {
+        calculateCoveredState();
+
+        const arena = document.getElementById('shanghai-arena');
+        let html = '';
+
+        // Sort by Z to render bottom to top so browser stacking is correct
+        const renderList = [...shTiles].sort((a,b) => a.z - b.z);
+
+        renderList.forEach(t => {
+            if (t.isRemoved) return;
+            if (t === dragData?.tile) return; // Dragged tile is handled separately
+            
+            const isCovered = t.isCovered ? 'covered' : '';
+            
+            // Initial position adds depth shifting
+            t.visualX = t.x - (t.z * 1);
+            t.visualY = t.y - (t.z * 1);
+            
+            html += `
+                <div id="tile-${t.id}" class="shanghai-tile ${isCovered}" 
+                     style="left: ${t.visualX}px; top: ${t.visualY}px; z-index: ${t.z};"
+                     onpointerdown="startDrag(event, ${t.id})">
+                    ${t.emoji}
+                </div>
+            `;
+        });
+
+        arena.innerHTML = html;
+        
+        // Re-append dragged tile if it exists to keep it on top without recreating its DOM randomly
+        if (dragData && dragData.tile) {
+            const dt = dragData.tile;
+            const el = document.createElement('div');
+            el.id = `tile-${dt.id}`;
+            el.className = `shanghai-tile dragging`;
+            el.style.left = `${dt.visualX}px`;
+            el.style.top = `${dt.visualY}px`;
+            el.innerHTML = dt.emoji;
+            arena.appendChild(el);
+        }
+        
+        // Check win
+        const remaining = shTiles.filter(t => !t.isRemoved).length;
+        if (remaining === 0) {
+            addScore(100 * shLevel);
+            shLevel++;
+            setTimeout(() => {
+                generateShanghaiLevel(shLevel);
+            }, 500);
+        }
+    }
+
+    window.startDrag = function(e, id) {
+        if(lives <= 0) return;
+        
+        const tile = shTiles.find(t => t.id === id);
+        if(!tile || tile.isRemoved || tile.isCovered) {
+             if(navigator.vibrate) navigator.vibrate(20);
+             return;
+        }
+
+        // Only single touch/pointer
+        if (e.pointerType === 'touch') {
+            document.body.style.overflow = 'hidden'; // prevent scrolling while dragging
+        }
+        
+        dragData = {
+            tile: tile,
+            offsetX: e.clientX - tile.visualX,
+            offsetY: e.clientY - tile.visualY
+        };
+
+        if(navigator.vibrate) navigator.vibrate(20);
+        
+        renderShanghai(); // Re-render puts it into dragging state
+
+        document.addEventListener('pointermove', onDragMove, {passive: false});
+        document.addEventListener('pointerup', onDragEnd);
+        document.addEventListener('pointercancel', onDragEnd);
+    };
+
+    function onDragMove(e) {
+        if (!dragData) return;
+        
+        // Prevent default scrolling during drag
+        if (e.cancelable) e.preventDefault();
+
+        dragData.tile.visualX = e.clientX - dragData.offsetX;
+        dragData.tile.visualY = e.clientY - dragData.offsetY;
+
+        // Directly manipulate DOM to avoid full re-render stutter
+        const el = document.getElementById(`tile-${dragData.tile.id}`);
+        if(el) {
+            el.style.left = `${dragData.tile.visualX}px`;
+            el.style.top = `${dragData.tile.visualY}px`;
+        }
+    }
+
+    function onDragEnd(e) {
+        if (!dragData) return;
+        
+        document.body.style.overflow = ''; // restore scrolling
+
+        const tile = dragData.tile;
+        const pointerX = e.clientX;
+        const pointerY = e.clientY;
+
+        document.removeEventListener('pointermove', onDragMove);
+        document.removeEventListener('pointerup', onDragEnd);
+        document.removeEventListener('pointercancel', onDragEnd);
+
+        dragData = null; // Clear drag state
+
+        // Check if dropped over a bin
+        checkDropZone(tile, pointerX, pointerY);
+    }
+
+    function checkDropZone(tile, x, y) {
+        const bins = document.querySelectorAll('.sort-bin');
+        let droppedBinId = null;
+
+        bins.forEach((binEl, index) => {
+            const rect = binEl.getBoundingClientRect();
+            // Check if pointer is inside bin boundaries
+            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                // Determine ID based on matching class/attribute. Easiest is using order matching array.
+                droppedBinId = shCategories[index].id;
+            }
+        });
+
+        if (droppedBinId !== null) {
+            if (tile.categoryId === droppedBinId) {
+                // Correct bin
+                tile.isRemoved = true;
+                if(navigator.vibrate) navigator.vibrate(50);
+                addScore(20);
+            } else {
+                // Wrong bin
+                if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                loseLife();
+            }
+        }
+
+        // Reset tile pos regardless (it either gets removed or snaps back)
+        tile.visualX = tile.x - (tile.z * 1);
+        tile.visualY = tile.y - (tile.z * 1);
+        
+        renderShanghai();
+    }
+
+    // Initialize the main menu load
+    window.onload = () => {
+        loadLeaderboard(1); // default showing game 1 leaderboard
+    };
+</script>
+
+</body>
+</html>
